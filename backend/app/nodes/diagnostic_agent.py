@@ -13,12 +13,18 @@ import os
 
 load_dotenv(override=True)
 
-# Initialisation du LLM — comme dans le cours du prof
-llm = ChatOpenAI(
-    model="gpt-3.5-turbo",  # Modèle de base pour économiser les tokens
-    temperature=0.3,
-    max_tokens=1000
-)
+def get_llm():
+    """Fonction pour récupérer le LLM avec la clé explicitement passée"""
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise ValueError("ERREUR : La clé OPENAI_API_KEY est introuvable dans l'environnement !")
+    
+    return ChatOpenAI(
+        model="gpt-3.5-turbo",
+        temperature=0.3,
+        max_tokens=1000,
+        openai_api_key=api_key # On la passe explicitement ici
+    )
 
 
 def diagnostic_agent_node(state: MedicalState) -> dict:
@@ -33,10 +39,12 @@ def diagnostic_agent_node(state: MedicalState) -> dict:
     patient_case = state.get('patient_case', 'Cas non spécifié')
     messages = state.get('messages', [])
 
-    print(f'[DIAGNOSTIC] Question {question_count + 1}/5')
 
     # Si on n'a pas encore posé toutes les 5 questions
     if question_count < 5:
+
+        print(f'[DIAGNOSTIC] Question {question_count + 1}/5')
+
         # Appel du tool ask_patient
         question = ask_patient.invoke({'question_number': question_count + 1})
 
@@ -70,8 +78,14 @@ Produis une synthèse structurée avec :
 IMPORTANT : Ce n'est pas un diagnostic définitif.
 Ne remplace pas la consultation médicale."""
 
-    response = llm.invoke([HumanMessage(content=synthesis_prompt)])
-    diagnostic_summary = response.content
+    # On appelle le LLM ici
+    try:
+        llm = get_llm() # On récupère le LLM tout de suite
+        response = llm.invoke([HumanMessage(content=synthesis_prompt)])
+        diagnostic_summary = response.content
+    except Exception as e:
+        print(f"❌ Erreur critique lors de l'appel OpenAI : {e}")
+        raise e
 
     # Appel du tool recommend_interim_care
     interim = recommend_interim_care.invoke({'diagnostic_summary': diagnostic_summary})

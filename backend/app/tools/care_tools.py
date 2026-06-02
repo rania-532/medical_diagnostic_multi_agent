@@ -20,6 +20,6 @@ def recommend_interim_care(diagnostic_summary: str) -> str:
         "• Surveiller l'évolution des symptômes.\n"
         "• Consulter rapidement en cas d'aggravation.\n"
         "• Ces recommandations sont générales et ne remplacent pas un avis médical.\n"
-        f"\nContexte analysé : {diagnostic_summary[:200]}..."
+        f"\nContexte analysé : {diagnostic_summary}"
     )
     return care

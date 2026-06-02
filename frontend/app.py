@@ -1,7 +1,3 @@
-# frontend/app.py
-# Interface Streamlit pour le système diagnostic médical.
-# 4 écrans : cas initial, questions/réponses, revue médecin, rapport final.
-
 import streamlit as st
 import requests
 import time
@@ -9,226 +5,257 @@ import time
 # URL de l'API backend
 API_URL = 'http://localhost:8000'
 
-
 # ─── Configuration de la page ───
 st.set_page_config(
-    page_title='Diagnostic Médical — Système Multi-Agents',
+    page_title='ClinicalAI - Assistant',
     page_icon='🏥',
-    layout='wide'
+    layout='centered',
+    initial_sidebar_state='expanded'
 )
 
+# ─── DESIGN & CSS PROFESSIONNEL ───
+st.markdown("""
+    <style>
+    /* 1. VERROUILLAGE TOTAL DU SCROLL (SPA) */
+    html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"], .main .block-container {
+        overflow: hidden !important;
+        height: 100vh !important;
+        padding-top: 1rem !important;
+        padding-bottom: 0 !important;
+    }
+
+    /* 2. THÈME DE COULEURS MÉDICALES */
+    :root {
+        --primary: #004e92;
+        --secondary: #00b4d8;
+        --bg: #ffffff;
+    }
+
+    /* 3. SIDEBAR PROFESSIONNELLE */
+    [data-testid="stSidebarContent"] {
+        background-color: #f8f9fa;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        padding-top: 2rem;
+        border-right: 1px solid #e0e0e0;
+    }
+
+    /* Avatar Doctoresse (Animation Style) */
+    .doctor-avatar {
+        width: 130px;
+        margin-bottom: 15px;
+    }
+
+    /* Centrage du texte sidebar */
+    .sidebar-text {
+        text-align: center;
+        color: #1c2e4a;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    /* 4. BOUTONS PROFESSIONNELS */
+    .stButton>button {
+        border-radius: 6px;
+        background-color: #004e92;
+        color: white;
+        border: none;
+        height: 3rem;
+        font-weight: 500;
+        transition: background 0.3s;
+    }
+    .stButton>button:hover {
+        background-color: #003a6d;
+    }
+
+    /* 5. TITRES */
+    h1 { color: #004e92; font-weight: 700 !important; }
+    h3 { color: #1c2e4a; }
+
+    /* 6. CHAT & CONTAINERS (Scroll interne seulement) */
+    [data-testid="stExpander"], .stChatMessageContainer {
+        border-radius: 10px;
+    }
+            
+
+
+
+
+
+
+          
+    </style>
+    """, unsafe_allow_html=True)
 
 # ─── Initialisation de session_state ───
-# session_state garde les données entre les interactions Streamlit
-if 'thread_id' not in st.session_state:
-    st.session_state.thread_id = None
 if 'current_screen' not in st.session_state:
-    st.session_state.current_screen = 'accueil'
-if 'question_count' not in st.session_state:
-    st.session_state.question_count = 0
-if 'current_question' not in st.session_state:
-    st.session_state.current_question = ''
-if 'diagnostic_summary' not in st.session_state:
-    st.session_state.diagnostic_summary = ''
-if 'interim_care' not in st.session_state:
-    st.session_state.interim_care = ''
-if 'final_report' not in st.session_state:
-    st.session_state.final_report = ''
-if 'answers_given' not in st.session_state:
-    st.session_state.answers_given = []
+    st.session_state.update({
+        'thread_id': None, 'current_screen': 'accueil',
+        'question_count': 0, 'current_question': '',
+        'diagnostic_summary': '', 'interim_care': '',
+        'final_report': '', 'answers_given': [], 'patient_case': ''
+    })
 
-
-# ─── Sidebar (navigation) ───
+# ─── SIDEBAR FIXE ───
 with st.sidebar:
-    st.image('https://img.icons8.com/color/96/medical-doctor.png', width=80)
-    st.title('🏥 Diagnostic Médical')
-    st.markdown('**Système multi-agents académique**')
-    st.divider()
-    st.caption('⚠️ Ce système ne remplace pas une consultation médicale.')
-    st.divider()
+    # Illustration Animée (Doctoresse)
+    st.markdown('<img src="https://cdn-icons-png.flaticon.com/512/3304/3304567.png" class="doctor-avatar">', unsafe_allow_html=True)
+    
+    st.markdown('<div class="sidebar-text"><h3>Clinical AI</h3><p>Assistant d\'orientation</p></div>', unsafe_allow_html=True)
+    
+    st.write("---")
+    
+    # Indicateur de progression épuré
+    steps = {'accueil': 1, 'questions': 2, 'medecin': 3, 'rapport': 4}
+    current_step = steps.get(st.session_state.current_screen, 1)
+    st.write(f"Phase {current_step} sur 4")
+    st.progress(current_step / 4)
+    
+    # Bouton Réinitialiser en bas
+    for _ in range(10): st.sidebar.write("") # Espaceur
+    if st.button('Réinitialiser la session'):
+        for key in list(st.session_state.keys()): del st.session_state[key]
+        st.rerun()
 
-    # Indicateur d'étape
-    steps = {
-        'accueil': '1️⃣ Saisie du cas',
-        'questions': '2️⃣ Questions patient',
-        'medecin': '3️⃣ Revue médecin',
-        'rapport': '4️⃣ Rapport final',
-    }
-    for key, label in steps.items():
-        if st.session_state.current_screen == key:
-            st.markdown(f'**→ {label}**')
-        else:
-            st.markdown(f'   {label}')
+# ─── ZONE PRINCIPALE (CONTENUS) ───
+# On utilise un container pour chaque écran pour garder la structure SPA
 
-
-# ─── ÉCRAN 1 : Saisie du cas initial ───
+# --- ÉCRAN 1 : ACCUEIL ---
 if st.session_state.current_screen == 'accueil':
-    st.title('🏥 Système de Diagnostic Médical Multi-Agents')
-    st.markdown('### Écran 1 — Saisie du cas patient')
-    st.info('Décrivez le cas patient initial. Le système posera ensuite 5 questions pour affiner l\'orientation clinique.')
-
-    patient_case = st.text_area(
-        'Description du cas patient :',
-        placeholder='Ex: Patient de 45 ans présentant de la fièvre et une toux sèche depuis 3 jours...',
-        height=200
+    st.markdown("<h2 style='margin-top: -60px; margin-bottom: 10px; color: #004e92; font-weight: 700;'> Dossier Patient</h2>", unsafe_allow_html=True)
+    st.markdown("##### Analyse initiale")
+    
+    case_input = st.text_area(
+        "Description", 
+        placeholder="Décrivez ici les symptômes majeurs et l'historique récent du patient...", 
+        height=320,
+        label_visibility="collapsed"
     )
-
-    if st.button('🚀 Démarrer la consultation', type='primary', use_container_width=True):
-        if not patient_case.strip():
-            st.error('Veuillez décrire le cas patient avant de démarrer.')
+    
+    st.write("") # Petit espace
+    
+    if st.button('Démarrer l\'analyse clinique', type='primary', use_container_width=True):
+        if not case_input.strip():
+            # Notification épurée sans emoji manuel
+            st.toast("Le champ de description est vide", icon="⚠️")
         else:
-            with st.spinner('Démarrage de la consultation...'):
-                try:
-                    # Créer une session
-                    session_resp = requests.post(f'{API_URL}/sessions/start').json()
-                    st.session_state.thread_id = session_resp['thread_id']
-
-                    # Démarrer le workflow
-                    start_resp = requests.post(
-                        f'{API_URL}/consultation/start',
-                        json={
-                            'thread_id': st.session_state.thread_id,
-                            'patient_case': patient_case,
-                        }
-                    ).json()
-
-                    st.session_state.question_count = start_resp.get('question_count', 0)
-                    st.session_state.current_question = start_resp.get('current_question', '')
-                    st.session_state.current_screen = 'questions'
-                    st.rerun()
-
-                except Exception as e:
-                    st.error(f'Erreur de connexion à l\'API : {e}')
-                    st.info('Vérifie que le backend tourne sur http://localhost:8000')
+            msg_placeholder = st.empty()
+            msg_placeholder.info("Initialisation de la session...")
+            try:
+                session_resp = requests.post(f'{API_URL}/sessions/start').json()
+                st.session_state.thread_id = session_resp['thread_id']
+                
+                start_resp = requests.post(
+                    f'{API_URL}/consultation/start',
+                    json={'thread_id': st.session_state.thread_id, 'patient_case': case_input}
+                ).json()
+                
+                st.session_state.patient_case = case_input
+                st.session_state.question_count = start_resp.get('question_count', 0)
+                st.session_state.current_question = start_resp.get('current_question', '')
+                st.session_state.current_screen = 'questions'
+                st.rerun()
+            except:
+                st.toast("Erreur de communication avec l'API", icon="🚨")
 
 
-# ─── ÉCRAN 2 : Questions/Réponses patient ───
+
+
+# --- ÉCRAN 2 : QUESTIONS ---
 elif st.session_state.current_screen == 'questions':
-    st.title('💬 Questions de l\'Agent Diagnostic')
-    st.markdown('### Écran 2 — Interrogatoire patient')
-    st.progress(st.session_state.question_count / 5, text=f'Question {st.session_state.question_count}/5')
+    st.markdown("<h2 style='margin-top: -60px; margin-bottom: 10px; color: #004e92; font-weight: 700;'> Interrogatoire Patient</h2>", unsafe_allow_html=True)    
+    # On ajuste la hauteur pour laisser de la place au bouton à la fin
+    container_height = 400 if not st.session_state.diagnostic_summary else 400
 
-    # Afficher les réponses précédentes
-    if st.session_state.answers_given:
-        with st.expander('📋 Réponses précédentes', expanded=False):
-            for i, qa in enumerate(st.session_state.answers_given):
-                st.markdown(f'**Q{i+1}:** {qa["question"]}')
-                st.markdown(f'*R:* {qa["answer"]}')
-                st.divider()
+    with st.container(height=container_height, border=True):
+        st.caption(f"Cas : {st.session_state.patient_case[:80]}...")
+        
+        for qa in st.session_state.answers_given:
+            with st.chat_message("assistant", avatar="👩‍⚕️"): st.write(qa['question'])
+            with st.chat_message("user"): st.write(qa['answer'])
+        
+        # Si la synthèse est arrivée, on l'affiche directement dans le chat
+        if st.session_state.diagnostic_summary:
+            with st.chat_message("assistant", avatar="👩‍⚕️"):
+                st.success("✅ Analyse terminée. Voici ma synthèse :")
+                st.markdown(st.session_state.diagnostic_summary)
+                st.info(f"💡 **Conseil :** {st.session_state.interim_care}")
 
-    # Si toutes les questions sont posées
-    if st.session_state.question_count >= 5 and st.session_state.diagnostic_summary:
-        st.success('✅ Toutes les questions ont été posées !')
-        st.markdown('### 🔬 Synthèse clinique préliminaire')
-        st.markdown(st.session_state.diagnostic_summary)
-        st.markdown('### 💊 Recommandations intermédiaires')
-        st.info(st.session_state.interim_care)
-        st.caption('⚠️ Ces recommandations sont générales et ne remplacent pas un avis médical.')
+        # Si on est encore en train de poser des questions
+        elif st.session_state.question_count <= 5:
+            with st.chat_message("assistant", avatar="👩‍⚕️"): 
+                st.write(st.session_state.current_question)
 
-        if st.button('➡️ Envoyer au médecin traitant', type='primary', use_container_width=True):
+    # Zone d'action en bas
+    if not st.session_state.diagnostic_summary:
+        # Input de chat classique tant qu'on n'a pas fini
+        if answer := st.chat_input("Saisissez votre réponse..."):
+            resp = requests.post(f'{API_URL}/consultation/answer', json={
+                'thread_id': st.session_state.thread_id, 
+                'question_number': st.session_state.question_count, 
+                'answer': answer}).json()
+            
+            st.session_state.answers_given.append({'question': st.session_state.current_question, 'answer': answer})
+            st.session_state.question_count = resp.get('question_count', 0)
+            st.session_state.current_question = resp.get('current_question', '')
+            st.session_state.diagnostic_summary = resp.get('diagnostic_summary', '')
+            st.session_state.interim_care = resp.get('interim_care', '')
+            st.rerun()
+    else:
+        # Si fini, on affiche le gros bouton pour passer à la phase suivante
+        st.write("")
+        if st.button('  Transmettre au médecin traitant pour validation', type='primary', use_container_width=True):
             st.session_state.current_screen = 'medecin'
             st.rerun()
 
-    else:
-        # Afficher la question courante
-        st.markdown(f'### Question {st.session_state.question_count} :')
-        st.markdown(f'**{st.session_state.current_question}**')
 
-        patient_answer = st.text_area(
-            'Votre réponse :',
-            placeholder='Décrivez vos symptômes...',
-            height=100,
-            key=f'answer_{st.session_state.question_count}'
-        )
-
-        if st.button('✅ Soumettre la réponse', type='primary', use_container_width=True):
-            if not patient_answer.strip():
-                st.warning('Veuillez entrer une réponse.')
-            else:
-                with st.spinner('Traitement en cours...'):
-                    try:
-                        resp = requests.post(
-                            f'{API_URL}/consultation/answer',
-                            json={
-                                'thread_id': st.session_state.thread_id,
-                                'question_number': st.session_state.question_count,
-                                'answer': patient_answer,
-                            }
-                        ).json()
-
-                        # Sauvegarder la réponse
-                        st.session_state.answers_given.append({
-                            'question': st.session_state.current_question,
-                            'answer': patient_answer,
-                        })
-
-                        st.session_state.question_count = resp.get('question_count', 0)
-                        st.session_state.current_question = resp.get('current_question', '')
-                        st.session_state.diagnostic_summary = resp.get('diagnostic_summary', '')
-                        st.session_state.interim_care = resp.get('interim_care', '')
-                        st.rerun()
-
-                    except Exception as e:
-                        st.error(f'Erreur : {e}')
-
-
-# ─── ÉCRAN 3 : Revue médecin ───
+# --- ÉCRAN 3 : REVUE MÉDECIN ---
 elif st.session_state.current_screen == 'medecin':
-    st.title('👨‍⚕️ Revue du Médecin Traitant')
-    st.markdown('### Écran 3 — Human-in-the-Loop')
-    st.warning('⏸️ Le workflow est en attente de l\'avis du médecin traitant.')
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown('#### 🔬 Synthèse clinique préliminaire')
-        st.markdown(st.session_state.diagnostic_summary)
-    with col2:
-        st.markdown('#### 💊 Recommandations intermédiaires')
-        st.info(st.session_state.interim_care)
-
-    st.divider()
-    st.markdown('#### ✍️ Traitement et conduite à tenir proposés par le médecin')
-
-    physician_treatment = st.text_area(
-        'Traitement médical et conduite à tenir :',
-        placeholder='Ex: Antibiothérapie adaptée, repos 5 jours, réévaluation si aggravation...',
-        height=200
+    # On utilise un titre plus compact
+    st.markdown("<h2 style='margin-top: -60px; margin-bottom: 10px; color: #004e92; font-weight: 700;'> Évaluation Médicale</h2>", unsafe_allow_html=True)    # On réduit la hauteur à 300 pour laisser de la place au bouton en bas
+    with st.container(height=380, border=True):
+        c1, c2 = st.columns(2)
+        with c1: 
+            st.markdown("**Synthèse clinique**")
+            st.caption(st.session_state.diagnostic_summary)
+        with c2: 
+            st.markdown("**Conseils d'orientation**")
+            st.caption(st.session_state.interim_care)
+    
+    # On réduit la hauteur du texte area de 120 à 90
+    treatment = st.text_area(
+        "Prescription finale", 
+        placeholder="Traitement ou conduite à tenir...", 
+        height=90,
+        label_visibility="collapsed" # On cache le label pour gagner une ligne
     )
-
-    if st.button('✅ Valider et générer le rapport final', type='primary', use_container_width=True):
-        if not physician_treatment.strip():
-            st.error('Veuillez entrer le traitement proposé.')
+    
+    # Le bouton sera maintenant bien plus haut
+    if st.button('Valider et générer le rapport final', type='primary', use_container_width=True):
+        if treatment:
+            with st.spinner("Rédaction..."):
+                resp = requests.post(f'{API_URL}/consultation/resume', json={
+                    'thread_id': st.session_state.thread_id, 'physician_treatment': treatment}).json()
+                st.session_state.final_report = resp.get('final_report', '')
+                st.session_state.current_screen = 'rapport'
+                st.rerun()
         else:
-            with st.spinner('Génération du rapport final...'):
-                try:
-                    resp = requests.post(
-                        f'{API_URL}/consultation/resume',
-                        json={
-                            'thread_id': st.session_state.thread_id,
-                            'physician_treatment': physician_treatment,
-                        }
-                    ).json()
+            st.toast("L'avis médical est requis", icon="⚠️")
 
-                    st.session_state.final_report = resp.get('final_report', '')
-                    st.session_state.current_screen = 'rapport'
-                    st.rerun()
-
-                except Exception as e:
-                    st.error(f'Erreur : {e}')
-
-
-# ─── ÉCRAN 4 : Rapport final ───
+# --- ÉCRAN 4 : RAPPORT FINAL ---
 elif st.session_state.current_screen == 'rapport':
-    st.title('📄 Rapport Final')
-    st.markdown('### Écran 4 — Rapport d\'orientation clinique')
-    st.success('✅ Consultation terminée ! Voici le rapport final.')
+    st.markdown("<h2 style='margin-top: -60px; margin-bottom: 10px; color: #004e92; font-weight: 700;'> Rapport d'Orientation</h2>", unsafe_allow_html=True)    # Hauteur réduite à 350 pour laisser de la place au bouton
+    with st.container(height=380, border=True):
+        if st.session_state.final_report:
+            st.markdown(st.session_state.final_report)
+        else:
+            st.warning("Le rapport n'a pas pu être récupéré.")
 
-    st.markdown(st.session_state.final_report)
-    st.divider()
-    st.error('⚠️ Ce système ne remplace pas une consultation médicale.')
+    st.write("") # Petit espace
 
-    if st.button('🔄 Nouvelle consultation', use_container_width=True):
-        # Réinitialise tout
+    # BOUTON BIEN VISIBLE
+    if st.button(' Nouvelle Consultation', type='primary', use_container_width=True):
         for key in list(st.session_state.keys()):
             del st.session_state[key]
         st.rerun()

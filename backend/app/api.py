@@ -65,15 +65,29 @@ async def start_consultation(request: ConsultationStartRequest):
         'messages': [],
     }
     try:
-        state = medical_graph.invoke(initial_state, config=config)
+        # 1. On initialise l'état (s'arrête AVANT diagnostic_agent à cause de l'interrupt)
+        medical_graph.invoke(initial_state, config=config)
+        
+        # 2. On relance immédiatement pour exécuter le DiagnosticAgent et générer la Q1
+        medical_graph.invoke(None, config=config)
+        
+        # 3. On récupère l'état mis à jour pour lire la question
+        current_state = medical_graph.get_state(config)
+        values = current_state.values
+        
+        # On récupère le contenu du dernier message (qui est la Question 1)
+        messages = values.get('messages', [])
+        question_text = messages[-1].content if messages else "Pas de question générée"
+
         return {
             'status': 'running',
             'thread_id': request.thread_id,
-            'question_count': state.get('question_count', 0),
-            'current_question': state.get('messages', [{}])[-1].content if state.get('messages') else '',
-            'next': state.get('next', ''),
+            'question_count': values.get('question_count', 0),
+            'current_question': question_text,
+            'next': values.get('next', ''),
         }
     except Exception as e:
+        print(f"Erreur lors du démarrage : {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

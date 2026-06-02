@@ -49,14 +49,14 @@ def create_medical_graph():
         print(">>> [DÉTECTION] MODE LANGGRAPH STUDIO : Désactivation du checkpointer")
         # Compilation SANS checkpointer (le Studio gère sa propre base de données)
         return workflow.compile(
-            interrupt_before=['physician_review']
+            interrupt_before=['diagnostic_agent', 'physician_review']
         )
     else:
         print(">>> [DÉTECTION] MODE STANDARD (FastAPI/Test) : Activation du checkpointer")
         # Compilation AVEC checkpointer pour que l'API fonctionne
         return workflow.compile(
             checkpointer=InMemorySaver(),
-            interrupt_before=['physician_review']
+            interrupt_before=['diagnostic_agent', 'physician_review']
         )
 
 # Instance globale

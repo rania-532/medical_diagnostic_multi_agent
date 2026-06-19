@@ -142,6 +142,8 @@ if st.session_state.current_screen == 'accueil':
         else:
             msg_placeholder = st.empty()
             msg_placeholder.info("Initialisation de la session...")
+
+            success = False
             try:
                 session_resp = requests.post(f'{API_URL}/sessions/start').json()
                 st.session_state.thread_id = session_resp['thread_id']
@@ -155,9 +157,13 @@ if st.session_state.current_screen == 'accueil':
                 st.session_state.question_count = start_resp.get('question_count', 0)
                 st.session_state.current_question = start_resp.get('current_question', '')
                 st.session_state.current_screen = 'questions'
+                success = True
+                #st.rerun()
+            except Exception as e:
+                st.toast(f"Erreur : {e}", icon="🚨")
+
+            if success: 
                 st.rerun()
-            except:
-                st.toast("Erreur de communication avec l'API", icon="🚨")
 
 
 

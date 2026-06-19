@@ -1,6 +1,6 @@
 # backend/app/api.py
 # API FastAPI exposant le graphe LangGraph.
-# Tous les endpoints demandés par le prof.
+
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
